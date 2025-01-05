@@ -1,0 +1,11 @@
+torch
+transformers
+pandas
+scikit-learn
+matplotlib
+seaborn
+jupyterlab
+plotly
+pyarrow
+fastparquet
+tqdm
