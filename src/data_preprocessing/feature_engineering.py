@@ -69,20 +69,16 @@ def sequence_feature_engineering_pipeline():
     print(raw_data.head())
 
     # Ensure required columns are present
-    if not {"prompt", "response_a", "response_b"}.issubset(raw_data.columns):
+    if not {"prompt", "response_a", "response_b", "winner"}.issubset(raw_data.columns):
         raise ValueError("❌ Required columns are missing from raw data!")
 
     df = feature_engineering_pipeline(raw_data)
 
-    # Ensure that labels are duplicated to match the number of tokenized responses
-    # Duplicate the labels (winner column) for both response_a and response_b
-    df_labels = df["winner"].copy()
-    df_labels = pd.concat([df_labels, df_labels], ignore_index=True)
+    # Correctly encode the winner (0 for response_a, 1 for response_b)
+    df["winner"] = df["winner"].map({"model_a": 0, "model_b": 1})
 
     # Save feature-engineered data to disk
     df.to_parquet("data/processed/feature_engineered_data.parquet")
-    df_labels.to_pickle("data/processed/labels.pkl")
+    df["winner"].to_pickle("data/processed/labels.pkl")
 
-    print(
-        "\n✅ Feature engineering complete! Saved to data/processed/feature_engineered_data.parquet"
-    )
+    print("\n✅ Feature engineering complete! Saved with corrected labels.")

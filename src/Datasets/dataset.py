@@ -1,27 +1,26 @@
-import pickle
+import torch
 from torch.utils.data import Dataset
+import pandas as pd
 
 
 class ChatbotDataset(Dataset):
     def __init__(
         self,
-        data_path="data/processed/tokenized_data.pkl",
+        data_path="data/processed/tokenized_data.pt",
         label_path="data/processed/labels.pkl",
     ):
-        # Load the tokenized data
-        with open(data_path, "rb") as f:
-            tokenized_data = pickle.load(f)
+        # Load tokenized data (now as a PyTorch tensor)
+        tokenized_data = torch.load(data_path)
 
-        # Load the labels
-        with open(label_path, "rb") as f:
-            labels = pickle.load(f)
+        # Load the labels (still as a Pandas Series)
+        labels = torch.tensor(pd.read_pickle(label_path).values, dtype=torch.long)
 
         # Verify the tokenized data and labels match
         assert (
             len(tokenized_data["input_ids"]) == len(labels)
         ), f"Tokenized data length {len(tokenized_data['input_ids'])} does not match labels length {len(labels)}"
 
-        # Assign input_ids, attention_mask, and labels
+        # Assign input_ids, attention_mask, and labels as tensors
         self.input_ids = tokenized_data["input_ids"]
         self.attention_mask = tokenized_data["attention_mask"]
         self.labels = labels
