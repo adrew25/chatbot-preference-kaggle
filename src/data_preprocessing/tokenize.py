@@ -1,23 +1,20 @@
 import torch
-from transformers import AutoTokenizer
-import pandas as pd
 import pickle
-from tqdm import tqdm
 import os
+from transformers import AutoTokenizer  # Import here to avoid circular imports
+from tqdm import tqdm
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-tokenizer = AutoTokenizer.from_pretrained(
-    "distilbert-base-multilingual-cased", use_fast=True
-)
-
 
 def tokenize_data_in_batches(
-    df, batch_size=100, cache_path="data/processed/tokenized_data.pkl"
+    df,
+    batch_size=128,
+    cache_path="data/processed/tokenized_data.pkl",
+    labels_cache_path="data/processed/labels.pkl",
 ):
-    """
-    Tokenizes data in batches and saves the tokenized outputs to disk.
-    """
+    tokenizer = AutoTokenizer.from_pretrained("distilbert-base-multilingual-cased")
+
     os.makedirs(os.path.dirname(cache_path), exist_ok=True)
 
     inputs = {
@@ -25,6 +22,9 @@ def tokenize_data_in_batches(
         "attention_mask": [],
     }
 
+    labels = []
+
+    # Tokenize in batches
     for i in tqdm(range(0, len(df), batch_size), desc="Tokenizing Data"):
         batch_df = df.iloc[i : i + batch_size]
 
@@ -32,39 +32,54 @@ def tokenize_data_in_batches(
         batch_resp_a = batch_df["response_a"].tolist()
         batch_resp_b = batch_df["response_b"].tolist()
 
+        # Tokenizing prompt and response_a
         with torch.no_grad():
-            batch_inputs = tokenizer(
+            inputs_a = tokenizer(
                 batch_prompts,
                 batch_resp_a,
-                batch_resp_b,
-                padding="max_length",
+                padding=True,
                 truncation=True,
+                max_length=512,
                 return_tensors="pt",
-                max_length=256,
+                return_attention_mask=True,
+            )
+            inputs_b = tokenizer(
+                batch_prompts,
+                batch_resp_b,
+                padding=True,
+                truncation=True,
+                max_length=512,
+                return_tensors="pt",
+                return_attention_mask=True,
             )
 
-        batch_inputs = {key: value.to(device) for key, value in batch_inputs.items()}
-        inputs["input_ids"].append(batch_inputs["input_ids"].cpu())
-        inputs["attention_mask"].append(batch_inputs["attention_mask"].cpu())
+        # Concatenate the input_ids and attention_mask for both pairs
+        inputs["input_ids"].append(
+            torch.cat([inputs_a["input_ids"], inputs_b["input_ids"]], dim=0)
+        )
+        inputs["attention_mask"].append(
+            torch.cat([inputs_a["attention_mask"], inputs_b["attention_mask"]], dim=0)
+        )
 
+        # Extract labels (same logic as before)
+        batch_labels = (
+            (batch_df["winner"] == "a").astype(int).tolist()
+        )  # 1 if winner is 'a', 0 if winner is 'b'
+
+        # Duplicate the labels to match both tokenized pairs (response_a and response_b)
+        labels.extend(batch_labels * 2)  # Duplicate the labels for both responses
+
+    # Concatenate all batches for inputs
     inputs["input_ids"] = torch.cat(inputs["input_ids"], dim=0)
     inputs["attention_mask"] = torch.cat(inputs["attention_mask"], dim=0)
 
-    # Save to processed data directory
+    # Save tokenized inputs and labels
     with open(cache_path, "wb") as f:
         pickle.dump(inputs, f)
 
+    with open(labels_cache_path, "wb") as f:
+        pickle.dump(labels, f)
+
     print(f"✅ Tokenization complete! Saved to {cache_path}")
-    return inputs
-
-
-def load_tokenized_data(cache_path="data/processed/tokenized_data.pkl"):
-    with open(cache_path, "rb") as f:
-        inputs = pickle.load(f)
-
-    inputs = {
-        key: value.to(device)
-        for key, value in tqdm(inputs.items(), desc="Loading Tokenized Data")
-    }
-    print(f"✅ Loaded tokenized data from {cache_path}")
-    return inputs
+    print(f"✅ Labels saved to {labels_cache_path}")
+    return inputs, labels

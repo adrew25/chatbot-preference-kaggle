@@ -1,30 +1,33 @@
-from src.data_preprocessing.load_data import load_data
-from src.data_preprocessing.preprocess_data import preprocess_data
-from src.data_preprocessing.tokenize import tokenize_data_in_batches
-
-
-def test_data_loading():
-    # Load data
-    df = load_data("data/raw/train.parquet")
-
-    # Preprocess data
-    df = preprocess_data(df)
-
-    print(df.head())
-    print(df.columns)
-
-
-def test_tokenization():
-    df = load_data("data/raw/train.parquet")
-
-    df = preprocess_data(df)
-
-    tokenized_data = tokenize_data_in_batches(df, batch_size=256)
-
-    print(tokenized_data.keys())
-    print("Tokenization complete. Shape:", tokenized_data["input_ids"].shape)
-
+from src.Datasets.dataset import ChatbotDataset
+from torch.utils.data import DataLoader
+import torch
+from src.models.bert_classifier import BertClassifier
 
 if __name__ == "__main__":
-    # test_data_loading()
-    test_tokenization()
+    # Load the data
+    dataset = ChatbotDataset(
+        data_path="data/processed/tokenized_data.pkl",
+        label_path="data/processed/labels.pkl",
+    )
+
+    # Split the dataset into training and validation sets
+    train_size = int(0.8 * len(dataset))
+    val_size = len(dataset) - train_size
+    train_dataset, val_dataset = torch.utils.data.random_split(
+        dataset, [train_size, val_size]
+    )
+
+    # Initialize the data loaders
+    train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=16)
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # Initialize the model
+    model = BertClassifier(
+        model_name="distilbert-base-multilingual-cased", num_classes=2
+    )
+    model.to(device)
+
+    print(f"Training set size: {len(train_loader.dataset)}")
+    print(f"Validation set size: {len(val_loader.dataset)}")
+    print(f"Device: {device}")
